@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Local configuration and secrets
+config.local.json
+*.local.json
+.env
+.env.*
+!.env.example
+
+# Recordings: board and organisation ids, full event payloads
+records/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Tool output
+.playwright-cli/
+tmp/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

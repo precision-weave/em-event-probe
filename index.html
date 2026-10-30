@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event probe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="/pw/theme.css">
+<link rel="stylesheet" href="/pw/components.css">
+<link rel="stylesheet" href="/pw/glass.css">
+<style>
+  /* Composed from pw tokens: the event timeline has no pw component of its own. */
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; overflow: hidden; }
+  .ep-main { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--pw-sp-4); padding: var(--pw-sp-6); }
+  .ep-controls { display: grid; gap: var(--pw-sp-4); padding: var(--pw-sp-4) var(--pw-sp-5); flex: 0 0 auto; }
+  .ep-controls.is-collapsed { padding: var(--pw-sp-2) var(--pw-sp-4); }
+  .ep-controls.is-collapsed .ep-groups, .ep-controls.is-collapsed .ep-extra { display: none; }
+  .ep-controls.is-collapsed .ep-toolbar { padding-top: 0; border-top: 0; }
+  .ep-extra { display: contents; }
+  .ep-toggle { margin-left: auto; }
+  .ep-groups { display: flex; flex-wrap: wrap; gap: var(--pw-sp-3) var(--pw-sp-6); }
+  .ep-group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pw-sp-2); }
+  .ep-group-label { font-size: var(--pw-fs-xs); color: var(--pw-text-2); font-weight: var(--pw-fw-semibold); text-transform: uppercase; letter-spacing: .06em; margin-right: var(--pw-sp-1); }
+  .ep-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pw-sp-3); padding-top: var(--pw-sp-3); border-top: 1px solid var(--pw-glass-line); }
+  .ep-inline { display: inline-flex; align-items: center; gap: var(--pw-sp-2); font-size: var(--pw-fs-sm); color: var(--pw-text-2); }
+  .ep-toolbar .pw-search { min-width: 16rem; }
+  .ep-toolbar .pw-choice { font-size: var(--pw-fs-sm); align-items: center; }
+  .ep-grid { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1.25fr); }
+  .ep-timeline { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .ep-cols { flex: 0 0 auto; border-bottom: 1px solid var(--pw-glass-line); }
+  .ep-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--pw-sp-2) var(--pw-sp-2); }
+  .ep-cols > div { padding: var(--pw-sp-2) var(--pw-sp-3); font-family: var(--pw-font-display); font-weight: var(--pw-fw-medium); font-size: var(--pw-fs-sm); }
+  .ep-row { border-bottom: 1px solid var(--pw-glass-line); }
+  .ep-row > div { padding: var(--pw-sp-1) var(--pw-sp-3); min-width: 0; }
+  .ep-time { color: var(--pw-text-2); font-size: var(--pw-fs-xs); font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: var(--pw-sp-2) !important; }
+  .ep-actcell { display: flex; padding-left: 0 !important; }
+  .ep-stripes { display: flex; gap: var(--pw-sp-1); margin-right: var(--pw-sp-2); align-self: stretch; }
+  .ep-stripe { width: var(--pw-sp-1); border-radius: var(--pw-r-full); }
+  .ep-ev { position: relative; margin: var(--pw-sp-1) 0; padding: var(--pw-sp-1) var(--pw-sp-2); border-radius: var(--pw-r-md); border: 1px solid var(--pw-glass-line); background: var(--pw-glass); }
+  .ep-ev summary { cursor: pointer; font-size: var(--pw-fs-sm); padding-right: calc(var(--pw-ctl-h-sm) + var(--pw-sp-2)); overflow-wrap: anywhere; line-height: var(--pw-lh-relaxed); }
+  .ep-ev summary .pw-badge { margin-left: var(--pw-sp-1); vertical-align: middle; }
+  .ep-ev pre { margin: var(--pw-sp-2) 0 var(--pw-sp-1); padding: var(--pw-sp-2); border-radius: var(--pw-r-sm); background: var(--pw-surface-sunken); font-family: var(--pw-font-mono); font-size: var(--pw-fs-xs); white-space: pre-wrap; word-break: break-all; max-height: 24rem; overflow: auto; }
+  .ep-first { margin: var(--pw-sp-6); }
+  .ep-ghost { margin: var(--pw-sp-1) 0; padding: var(--pw-sp-1) var(--pw-sp-2); border-radius: var(--pw-r-md); border: 1px dashed var(--pw-border); color: var(--pw-text-2); font-size: var(--pw-fs-sm); line-height: var(--pw-lh-relaxed); display: flex; flex-wrap: wrap; align-items: center; justify-content: center; text-align: center; gap: var(--pw-sp-1) var(--pw-sp-2); }
+  .ep-ghost-lost { border-color: var(--pw-error-border); }
+  .ep-ev .ep-copy { position: absolute; top: var(--pw-sp-1); right: var(--pw-sp-1); }
+  .ep-band { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pw-sp-2); grid-column: 1 / -1; padding: var(--pw-sp-2) var(--pw-sp-3) !important; margin: var(--pw-sp-2) 0 var(--pw-sp-1); border-radius: var(--pw-r-md); background: color-mix(in srgb, var(--pw-brand) 14%, transparent); border: 1px solid color-mix(in srgb, var(--pw-brand) 35%, transparent); }
+  .ep-band strong { font-family: var(--pw-font-display); font-weight: var(--pw-fw-medium); }
+  .ep-band .pw-muted { font-size: var(--pw-fs-sm); }
+  .ep-gap { grid-column: 1 / -1; text-align: center; font-size: var(--pw-fs-xs); color: var(--pw-text-2); padding: var(--pw-sp-1) 0 !important; }
+  @media (max-width: 1100px) { .ep-grid { grid-template-columns: 5rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<!--SPRITE-->
+<header class="pw-topbar">
+  <div class="pw-topbar-inner">
+    <a class="pw-brand" href="/"><span class="pw-avatar pw-avatar-square pw-avatar-sm" aria-hidden="true">EP</span><span class="pw-brand-name">Event probe</span><span class="pw-brand-sep" aria-hidden="true"></span><span class="pw-brand-sub">Probe board</span></a>
+    <div class="pw-topbar-actions">
+      <span id="runState"></span>
+      <span class="pw-small pw-muted" id="counts"></span>
+      <button class="pw-btn pw-btn-secondary pw-btn-sm" type="button" id="clearView" title="Start a new recording and clear this view"><svg class="pw-icon" aria-hidden="true"><use href="#i-eraser"/></svg>Clear view</button>
+    </div>
+  </div>
+</header>
+
+<main class="ep-main">
+  <section class="pw-card ep-controls" aria-label="Scenarios and playback">
+    <div class="ep-groups" id="scenarios"></div>
+    <div class="ep-toolbar">
+      <div class="pw-btn-group" role="group" aria-label="Playback">
+        <button class="pw-btn pw-btn-secondary pw-btn-sm" type="button" id="play"></button>
+        <button class="pw-btn pw-btn-secondary pw-btn-sm" type="button" id="step"><svg class="pw-icon" aria-hidden="true"><use href="#i-step-forward"/></svg>Step</button>
+        <button class="pw-btn pw-btn-secondary pw-btn-sm" type="button" id="restart"><svg class="pw-icon" aria-hidden="true"><use href="#i-skip-back"/></svg>From start</button>
+        <button class="pw-btn pw-btn-secondary pw-btn-sm" type="button" id="live" aria-pressed="false"><svg class="pw-icon" aria-hidden="true"><use href="#i-radio"/></svg>Live</button>
+      </div>
+      <label class="ep-inline" for="speed">Speed
+        <span class="pw-select-wrap"><select class="pw-select pw-input-sm" id="speed"></select></span>
+      </label>
+      <div class="pw-switch-row" title="Scenarios make one change, wait until the timeline has shown everything it caused, then make the next"><button class="pw-switch" type="button" role="switch" aria-checked="false" aria-labelledby="syncLbl" id="sync"></button><span class="pw-switch-label ep-inline" id="syncLbl">Wait for the timeline</span><span class="pw-switch-state pw-small pw-muted" id="syncState">Off</span></div>
+      <span class="ep-extra" id="extraControls">
+      <span class="ep-inline">Align
+        <span class="pw-btn-group" role="group" aria-label="Align rows">
+          <button class="pw-btn pw-btn-secondary pw-btn-sm" type="button" id="modeSeq" aria-pressed="true" title="A broadcast and its REST log entry share a row">By seq</button>
+          <button class="pw-btn pw-btn-secondary pw-btn-sm" type="button" id="modeTime" aria-pressed="false" title="One row per record, in the order received">By arrival</button>
+        </span>
+      </span>
+      <label class="pw-choice"><input class="pw-checkbox" type="checkbox" id="showStatus"><span>Show status records</span></label>
+      <div class="pw-search"><svg class="pw-icon" aria-hidden="true"><use href="#i-search"/></svg><input class="pw-input pw-input-sm" type="search" id="q" placeholder="Filter by id, event or name" aria-label="Filter events"><button class="pw-btn pw-btn-ghost pw-btn-sm pw-btn-icon pw-search-clear" type="button" id="qClear" aria-label="Clear filter" title="Clear filter"><svg class="pw-icon" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+      </span>
+      <button class="pw-btn pw-btn-ghost pw-btn-sm pw-btn-icon ep-toggle" type="button" id="toggleControls" aria-controls="scenarios extraControls"></button>
+    </div>
+  </section>
+
+  <section class="pw-card pw-card-flush ep-timeline" aria-label="Event timeline, newest first">
+    <div class="ep-grid ep-cols"><div>Time</div><div>What I did</div><div>Realtime</div><div>REST event log</div></div>
+    <div class="ep-scroll" id="scroll"><div id="rows"></div></div>
+  </section>
+</main>
+
+<dialog class="pw-dialog pw-dialog-sm pw-dialog-danger" id="dlgReset" aria-labelledby="dlgResetT">
+  <div class="pw-dialog-head"><h2 class="pw-dialog-title" id="dlgResetT">Reset the probe board?</h2></div>
+  <div class="pw-dialog-body"><p>Every timeline on the probe board is deleted, then the fixture is rebuilt: S1 Register user, S2 User list and a stray event. This cannot be undone.</p></div>
+  <div class="pw-dialog-foot"><button class="pw-btn pw-btn-ghost" type="button" data-close>Cancel</button><button class="pw-btn pw-btn-danger" type="button" id="confirmReset">Reset board</button></div>
+</dialog>
+<div class="pw-toast-region" id="toasts" aria-live="polite"></div>
+<div class="pw-visually-hidden" aria-live="polite" id="announce"></div>
+
+<script>
+(function () {
+  'use strict';
+  const SPEEDS = [0.5, 1, 2, 4, 8, 15, 30, 60];
+  const COLORS = ['--pw-chart-1', '--pw-chart-2', '--pw-chart-3', '--pw-chart-4', '--pw-chart-5', '--pw-chart-6'];
+  const GROUPS = { setup: 'Setup', slice: 'Slice status', element: 'Elements', delivery: 'Delivery', pipeline: 'Build pipeline' };
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const icon = (name) => '<svg class="pw-icon" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+  const badge = (variant, text, ic) => '<span class="pw-badge pw-badge-' + variant + '">' + (ic ? icon(ic) : '') + esc(text) + '</span>';
+
+  let records = [], names = {}, running = null, waitingFor = null, uid = 0, ackSent = -1;
+  let sync = true;
+  const viewerId = Math.random().toString(36).slice(2, 10);
+  try {
+    const s = localStorage.getItem('ep-sync'), sp = localStorage.getItem('ep-speed');
+    if (s !== null) sync = s === '1';
+    if (sp !== null) speedIdx = Number(sp);
+  } catch { /* storage unavailable: use the defaults */ }
+  // Every load starts on the first-use panel with earlier events hidden.
+  let replaying = true, hideHistory = true, firstUse = true;
+  let rows = [], shown = 0, mode = 'play', align = 'seq', speedIdx = 1, timer = null, dirty = false;
+  const open = new Set();
+
+  const short = (id) => id ? (names[id] || String(id).slice(0, 8)) : '∅';
+  const who = (agent, user) => agent ? short(agent) : user ? 'user ' + String(user).slice(0, 8) : 'unattributed';
+  const channel = (topic) => topic.endsWith('-slicechanged') ? 'slice:changed' : topic.startsWith('org:') ? 'org' : 'board';
+
+  // ── Derived facts per record ─────────────────────────────────────────────
+  function annotate() {
+    let lastSeq = null;
+    const rtBySeq = new Map();
+    const restBySeq = new Map(records.filter((r) => r.src === 'rest').map((r) => [r.payload.seq, r]));
+    for (const r of records) {
+      if (r.src === 'rt' && channel(r.topic) === 'board' && r.payload && r.payload.seq != null) {
+        const p = r.payload;
+        const gap = lastSeq != null && p.seq > lastSeq && p.prev_seq !== lastSeq;
+        // A gap left by a silent write is expected: the REST log shows what filled it.
+        const silentBefore = gap && restBySeq.get(p.prev_seq)?.payload.silent;
+        r._flag = lastSeq == null ? null
+          : p.seq < lastSeq ? { v: 'error', icon: 'circle-alert', text: 'Out of order' }
+          : silentBefore ? { v: 'warning', icon: 'triangle-alert', text: 'Follows silent write seq ' + p.prev_seq }
+          : gap ? { v: 'error', icon: 'circle-alert', text: 'Gap: prev_seq ' + p.prev_seq + ', last seen ' + lastSeq } : null;
+        lastSeq = Math.max(lastSeq ?? 0, p.seq);
+        rtBySeq.set(p.seq, r);
+      }
+    }
+    for (const r of records) {
+      if (r.src !== 'rest') continue;
+      const rt = rtBySeq.get(r.payload.seq);
+      r._lag = rt ? r.ms - rt.ms : null;
+      r._unbroadcast = !rt;
+    }
+  }
+
+  // ── Rows ─────────────────────────────────────────────────────────────────
+  function buildRows() {
+    annotate();
+    const showStatus = $('showStatus').checked;
+    const q = $('q').value.trim().toLowerCase();
+    const out = [];
+    const bySeq = new Map();
+    const actions = new Map();
+    let colorIdx = 0;
+    for (const r of records) {
+      if (r.src === 'status' && !showStatus) continue;
+      if (hideHistory && r._history) continue;
+      if (r.src === 'action') {
+        const a = actions.get(r.id) || { color: COLORS[colorIdx++ % COLORS.length] };
+        a[r.phase] = r; actions.set(r.id, a); r._color = a.color;
+      }
+      if (q && !JSON.stringify(r).toLowerCase().includes(q) && !(names[r.payload?.node_id] || names[r.payload?.sliceId] || '').toLowerCase().includes(q)) continue;
+      if (r.src === 'scenario') { out.push({ t: r.ms, band: r }); continue; }
+      const seq = align === 'seq' && (r.src === 'rt' || r.src === 'rest') ? r.payload?.seq : null;
+      if (seq != null && bySeq.has(seq)) { const row = bySeq.get(seq); row[r.src].push(r); row.t = Math.min(row.t, r.ms); continue; }
+      const row = { t: r.ms, act: [], rt: [], rest: [] };
+      (r.src === 'rt' ? row.rt : r.src === 'rest' ? row.rest : row.act).push(r);
+      if (seq != null) bySeq.set(seq, row);
+      out.push(row);
+    }
+    out.sort((a, b) => a.t - b.t);
+    const spans = [...actions.values()].filter((a) => a.start).map((a) => ({ from: a.start.ms, to: a.end ? a.end.ms : Infinity, color: a.color }));
+    for (const row of out) row.stripes = spans.filter((s) => row.t >= s.from && row.t <= s.to).map((s) => s.color);
+    rows = out;
+    if (mode === 'live' || shown > rows.length) shown = rows.length;
+  }
+
+  // ── Rendering ────────────────────────────────────────────────────────────
+  function summary(r) {
+    const p = r.payload || {};
+    if (r.src === 'action') {
+      if (r.phase === 'start') return esc(r.label) + (r.detail && (r.detail.tool || r.detail.rest) ? badge('neutral', r.detail.tool ? 'MCP ' + r.detail.tool : 'REST ' + r.detail.rest) : '');
+      return esc(r.label) + (r.ok ? badge('success', 'Done in ' + r.took + ' ms', 'circle-check') : badge('error', 'Failed', 'circle-alert') + ' <span class="pw-muted">' + esc(r.error) + '</span>');
+    }
+    if (r.src === 'fixture') return 'Fixture ready: S1, S2 and a stray event' + badge('success', 'Ready', 'circle-check');
+    if (r.src === 'status') return '<span class="pw-muted">' + esc((r.topic ? channel(r.topic) + ' ' : '') + r.status + (r.error ? ': ' + r.error : '')) + '</span>';
+    if (r.src === 'rt') {
+      const ch = channel(r.topic);
+      let s = badge('neutral', ch) + ' ';
+      if (ch === 'slice:changed') s += esc(short(p.sliceId)) + ' → <strong>' + esc(p.sliceStatus) + '</strong> · ' + esc(who(p.agentId, p.userId)) + badge('warning', 'No seq', 'triangle-alert');
+      else s += esc(r.event) + (p.node_type ? ' · ' + esc(p.node_type) : '') + (p.node_id !== undefined ? ' · ' + esc(short(p.node_id)) : '') + (p.seq != null ? ' · seq ' + p.seq : '') + ' · ' + esc(who(p.agent_id, p.user_id)) + (p.seq == null ? badge('warning', 'No seq', 'triangle-alert') : '');
+      if (r._flag) s += badge(r._flag.v, r._flag.text, r._flag.icon);
+      return s;
+    }
+    if (r.src === 'rest') {
+      let s = esc(p.event_type) + (p.node_type ? ' · ' + esc(p.node_type) : '') + ' · ' + esc(short(p.node_id)) + ' · seq ' + p.seq + ' · ' + esc(who(p.agent_id, p.user_id));
+      if (p.silent) s += badge('warning', 'Silent', 'triangle-alert');
+      if (r._lag != null) s += badge('neutral', (r._lag >= 0 ? '+' : '') + r._lag + ' ms after realtime', 'clock');
+      return s;
+    }
+    return esc(JSON.stringify(r));
+  }
+  function cell(r, kind) {
+    const key = String(r._uid);
+    const edge = kind === 'act' && r._color ? ' style="border-left: var(--pw-sp-1) solid var(' + r._color + ')"' : '';
+    return '<div class="ep-ev"' + edge + '><details data-key="' + key + '"' + (open.has(key) ? ' open' : '') + '><summary>' + summary(r) + '</summary><pre>' +
+      esc(JSON.stringify(r, (k, v) => k.startsWith('_') ? undefined : v, 2)) + '</pre></details>' +
+      '<button class="pw-btn pw-btn-ghost pw-btn-sm pw-btn-icon ep-copy" type="button" data-copy="' + key + '" aria-label="Copy JSON" title="Copy JSON">' + icon('copy') + '</button></div>';
+  }
+  // Where the realtime event for a REST log entry would be. Silent writes are held back by the server on
+  // purpose; anything else that never arrived is a lost broadcast.
+  function ghost(r) {
+    const p = r.payload;
+    return p.silent
+      ? '<div class="ep-ghost">' + icon('eye-off') + '<span>Silent write: no broadcast for seq ' + p.seq + '</span></div>'
+      : '<div class="ep-ghost ep-ghost-lost">' + icon('wifi-off') + '<span>Missing broadcast: seq ' + p.seq + ' reached the REST log but not realtime</span></div>';
+  }
+  function emptyCard(iconHtml, title, text, actions) {
+    return '<div class="ep-first"><div class="pw-empty-card"><div class="pw-empty">' + iconHtml +
+      '<div class="pw-empty-title">' + title + '</div><p class="pw-empty-text">' + text + '</p>' +
+      (actions ? '<div class="pw-empty-actions">' + actions + '</div>' : '') + '</div></div></div>';
+  }
+  const bigIcon = (name) => icon(name).replace('pw-icon', 'pw-icon pw-icon-xl');
+  function firstUsePanel() {
+    if (firstUse === 'resetting') return emptyCard('<span class="pw-spinner pw-spinner-lg" aria-hidden="true"></span>', 'Clearing the board',
+      'Then the fixture is rebuilt one component at a time, and the happy path runs.');
+    return emptyCard(bigIcon('activity'), 'Watch the board\'s events',
+      'Run the happy path on a freshly reset board, or make your own changes and see what the board sends.',
+      '<button class="pw-btn pw-btn-primary" type="button" data-first="run">' + icon('play') + 'Run the happy path</button>' +
+      '<button class="pw-btn pw-btn-secondary" type="button" data-first="wait">' + icon('radio') + 'Wait for my changes</button>');
+  }
+  function emptyState() {
+    return emptyCard(bigIcon('radio'), 'Listening for board events', 'Change something on the board, or run a scenario above, and it appears here.');
+  }
+  function render() {
+    dirty = false;
+    const t0 = rows.length ? rows[0].t : 0;
+    // Newest first. Reading further down: keep what is on screen still as new rows arrive at the top.
+    const scroller = $('scroll');
+    const fromBottom = scroller.scrollTop > 0 ? scroller.scrollHeight - scroller.scrollTop : null;
+    let h = '', prev = null;
+    for (const row of rows.slice(0, shown).reverse()) {
+      if (prev != null && prev - row.t > 1200) h += '<div class="ep-grid ep-row"><div class="ep-gap">' + ((prev - row.t) / 1000).toFixed(1) + ' s gap</div></div>';
+      prev = row.t;
+      if (row.band) {
+        const b = row.band;
+        h += '<div class="ep-grid"><div class="ep-band">' + (b.phase === 'start'
+          ? icon('zap') + ' <strong>' + esc(b.title) + '</strong><span class="pw-muted">' + esc(b.about || '') + '</span>'
+          : (b.ok ? badge('success', 'Finished', 'circle-check') : badge('error', 'Failed', 'circle-alert')) + ' <strong>' + esc(b.title) + '</strong>' + (b.ok ? '' : '<span class="pw-muted">' + esc(b.error) + '</span>')) + '</div></div>';
+        continue;
+      }
+      const stripes = '<div class="ep-stripes" aria-hidden="true">' + row.stripes.map((c) => '<div class="ep-stripe" style="background: var(' + c + ')"></div>').join('') + '</div>';
+      h += '<div class="ep-grid ep-row"><div class="ep-time" title="' + esc(new Date(row.t).toISOString().slice(11, 23)) + '">+' + ((row.t - t0) / 1000).toFixed(3) + ' s</div>' +
+        '<div class="ep-actcell">' + stripes + '<div style="flex: 1; min-width: 0">' + row.act.map((r) => cell(r, 'act')).join('') + '</div></div>' +
+        '<div>' + (row.rt.length ? row.rt.map((r) => cell(r, 'rt')).join('') : row.rest.filter((r) => r._unbroadcast).map(ghost).join('')) + '</div>' +
+        '<div>' + row.rest.map((r) => cell(r, 'rest')).join('') + '</div></div>';
+    }
+    $('rows').innerHTML = firstUse ? firstUsePanel() : h || emptyState();
+    $('runState').innerHTML = running
+      ? '<span class="pw-badge pw-badge-info"><span class="pw-spinner pw-spinner-sm" aria-hidden="true"></span>Running: ' + esc(running) + (waitingFor ? ', waiting for the timeline' : '') + '</span>'
+      : badge('neutral', 'Ready', 'circle-check');
+    $('counts').textContent = 'Showing ' + shown + ' of ' + rows.length + ' rows · ' + records.length + ' records';
+    document.querySelectorAll('[data-run]').forEach((b) => { b.disabled = !!running; });
+    if (fromBottom != null) scroller.scrollTop = scroller.scrollHeight - fromBottom;
+    // Tell the server how far playback has got: everything before the first row not yet shown. Rows hidden
+    // by the filter or the status checkbox never hold it up.
+    const ack = shown >= rows.length ? (records.length ? records[records.length - 1].ms : 0) : rows[shown].t - 1;
+    if (ack !== ackSent) { ackSent = ack; fetch('/ack', { method: 'POST', body: JSON.stringify({ viewer: viewerId, ms: ack }) }).catch(() => {}); }
+  }
+  const schedule = () => { if (!dirty) { dirty = true; requestAnimationFrame(render); } };
+  const rebuild = () => { buildRows(); schedule(); };
+
+  // ── Toasts ───────────────────────────────────────────────────────────────
+  function toast(variant, title, text) {
+    const el = document.createElement('div');
+    el.className = 'pw-toast pw-toast-' + variant;
+    el.setAttribute('role', variant === 'error' ? 'alert' : 'status');
+    el.innerHTML = icon(variant === 'error' ? 'circle-alert' : variant === 'warning' ? 'triangle-alert' : 'info') +
+      '<div class="pw-toast-body"><div class="pw-toast-title">' + esc(title) + '</div><div class="pw-toast-text">' + esc(text) + '</div></div>' +
+      '<button class="pw-btn pw-btn-ghost pw-btn-sm pw-btn-icon pw-toast-close" type="button" aria-label="Dismiss" title="Dismiss">' + icon('x') + '</button>';
+    el.querySelector('button').onclick = () => el.remove();
+    $('toasts').appendChild(el);
+    if (variant !== 'error') setTimeout(() => el.remove(), 6000);
+  }
+
+  // ── Playback ─────────────────────────────────────────────────────────────
+  function setMode(m) {
+    mode = m;
+    $('play').innerHTML = mode === 'play' ? icon('pause') + 'Pause' : icon('play') + 'Play';
+    $('live').setAttribute('aria-pressed', String(mode === 'live'));
+    clearInterval(timer);
+    if (mode === 'play') timer = setInterval(() => { if (shown < rows.length) { shown++; schedule(); } }, 1000 / SPEEDS[speedIdx]);
+    if (mode === 'live') shown = rows.length;
+    schedule();
+  }
+  $('speed').innerHTML = SPEEDS.map((s, i) => '<option value="' + i + '"' + (i === speedIdx ? ' selected' : '') + '>' + s + (s === 1 ? ' row' : ' rows') + ' a second</option>').join('');
+  $('play').onclick = () => setMode(mode === 'play' ? 'pause' : 'play');
+  $('step').onclick = () => { setMode('pause'); if (shown < rows.length) shown++; schedule(); };
+  $('restart').onclick = () => { shown = 0; setMode('play'); $('scroll').scrollTop = 0; };
+  $('live').onclick = () => setMode(mode === 'live' ? 'play' : 'live');
+  $('speed').onchange = () => {
+    speedIdx = Number($('speed').value);
+    try { localStorage.setItem('ep-speed', String(speedIdx)); } catch { /* storage unavailable */ }
+    if (mode === 'play') setMode('play');
+  };
+  const setAlign = (a) => { align = a; $('modeSeq').setAttribute('aria-pressed', String(a === 'seq')); $('modeTime').setAttribute('aria-pressed', String(a === 'time')); rebuild(); };
+  $('modeSeq').onclick = () => setAlign('seq');
+  $('modeTime').onclick = () => setAlign('time');
+  $('showStatus').onchange = rebuild;
+  $('q').oninput = rebuild;
+  $('qClear').onclick = () => { $('q').value = ''; rebuild(); $('q').focus(); };
+  $('clearView').onclick = () => fetch('/reset-view', { method: 'POST' });
+  function setSync(on) {
+    sync = on;
+    $('sync').setAttribute('aria-checked', String(on));
+    $('syncState').textContent = on ? 'On' : 'Off';
+    try { localStorage.setItem('ep-sync', on ? '1' : '0'); } catch { /* storage unavailable */ }
+  }
+  $('sync').onclick = () => setSync(!sync);
+  setSync(sync);
+
+  document.addEventListener('toggle', (e) => { const k = e.target.dataset && e.target.dataset.key; if (k) (e.target.open ? open.add(k) : open.delete(k)); }, true);
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('[data-copy]');
+    if (!btn) return;
+    const r = records.find((x) => String(x._uid) === btn.dataset.copy);
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(r, (k, v) => k.startsWith('_') ? undefined : v, 2));
+      btn.innerHTML = icon('check'); $('announce').textContent = 'Copied';
+    } catch { toast('error', 'Could not copy', 'The browser blocked clipboard access. Expand the row and select the text instead.'); }
+    setTimeout(() => { btn.innerHTML = icon('copy'); }, 1200);
+  });
+
+  // ── Scenarios ────────────────────────────────────────────────────────────
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-first]');
+    if (!b) return;
+    if (b.dataset.first === 'run') { firstUse = 'resetting'; schedule(); run('build-happy', 'Build: happy path', true); return; }
+    firstUse = false;
+    buildRows();
+    shown = rows.length;   // only events from now on play
+    schedule();
+  });
+  async function run(id, title, resetFirst) {
+    if (!resetFirst) firstUse = false;
+    const res = await fetch('/scenario/' + id + '?viewer=' + viewerId + (sync ? '&sync=1' : '') + (resetFirst ? '&reset=1' : ''), { method: 'POST' });
+    if (res.status === 409) toast('warning', 'A scenario is already running', 'Wait for ' + (running || 'it') + ' to finish, then run ' + title + '.');
+  }
+  fetch('/scenarios').then((r) => r.json()).then((list) => {
+    const groups = {};
+    for (const s of list) (groups[s.group] = groups[s.group] || []).push(s);
+    $('scenarios').innerHTML = Object.entries(groups).map(([g, items]) => '<div class="ep-group" role="group" aria-label="' + esc(GROUPS[g] || g) + '"><span class="ep-group-label">' + esc(GROUPS[g] || g) + '</span>' +
+      items.map((s) => '<button class="pw-btn ' + (s.id === 'reset-board' ? 'pw-btn-danger' : 'pw-btn-secondary') + ' pw-btn-sm" type="button" data-run="' + s.id + '" data-title="' + esc(s.title) + '" title="' + esc(s.about) + '">' +
+        (s.id === 'reset-board' ? icon('rotate-ccw') : '') + esc(s.title) + '</button>').join('') + '</div>').join('');
+    document.querySelectorAll('[data-run]').forEach((b) => b.onclick = () => b.dataset.run === 'reset-board' ? $('dlgReset').showModal() : run(b.dataset.run, b.dataset.title));
+    schedule();
+  });
+  $('dlgReset').querySelector('[data-close]').onclick = () => $('dlgReset').close();
+  $('confirmReset').onclick = () => { $('dlgReset').close(); run('reset-board', 'Reset board'); };
+
+  // ── Stream ───────────────────────────────────────────────────────────────
+  new EventSource('/stream?viewer=' + viewerId).onmessage = (e) => {
+    const r = JSON.parse(e.data);
+    if (r.src === 'replayed') { replaying = false; rebuild(); return; }
+    if (r.src === 'hello' && r.reset && firstUse === 'resetting') firstUse = false;
+    if (r.src === 'hello') { replaying = true; records = []; shown = 0; ackSent = -1; names = r.names || {}; running = r.running; waitingFor = null; open.clear(); rebuild(); return; }
+    if (r.src === 'sync') { waitingFor = r.waiting ? r.label : null; schedule(); return; }
+    r._uid = ++uid;
+    r._history = replaying;
+    if (r.src === 'fixture') names = r.names || names;
+    if (r.src === 'scenario') { running = r.phase === 'start' ? r.title : null; if (!running) waitingFor = null; }
+    if (r.src === 'scenario' && r.phase === 'end' && !r.ok && firstUse === 'resetting') { firstUse = 'intro'; toast('error', 'Could not clear the board', r.error + '. Try again, or use Reset board above.'); }
+    records.push(r);
+    rebuild();
+  };
+  // ── Controls card: sticky, collapsible, collapses itself past the fold ──
+  const card = document.querySelector('.ep-controls');
+  let collapsed = false, pastFold = false;
+  function setCollapsed(c) {
+    collapsed = c;
+    card.classList.toggle('is-collapsed', c);
+    const t = $('toggleControls'), label = c ? 'Expand controls' : 'Collapse controls';
+    t.setAttribute('aria-expanded', String(!c)); t.setAttribute('aria-label', label); t.title = label;
+    t.innerHTML = icon(c ? 'chevron-down' : 'chevron-up');
+  }
+  $('toggleControls').onclick = () => setCollapsed(!collapsed);
+  // Scrolling the timeline more than one panel height down collapses the card; coming back near the top
+  // expands it. The 200px band stops it flickering at the line; a manual toggle holds until the next crossing.
+  $('scroll').addEventListener('scroll', (e) => {
+    const el = e.currentTarget, fold = el.clientHeight;
+    if (!pastFold && el.scrollTop > fold) { pastFold = true; setCollapsed(true); }
+    else if (pastFold && el.scrollTop < fold - 200) { pastFold = false; setCollapsed(false); }
+  }, { passive: true });
+  setCollapsed(false);
+  setMode('play');
+})();
+</script>
+</body>
+</html>
